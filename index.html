@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -92,6 +93,7 @@
   </div>
 
   <script>
+    let stripe = null;
     let reader = null;
 
     function log(message) {
@@ -107,14 +109,16 @@
           method: 'POST'
         });
         const data = await response.json();
+        if (!data.secret) throw new Error("No connection token received.");
 
-        const stripe = StripeTerminal.create({
+        stripe = StripeTerminal.create({
           onFetchConnectionToken: () => data.secret
         });
 
         log("Discovering terminal readers...");
         const result = await stripe.discoverReaders();
         if (result.error) throw result.error;
+        if (result.discoveredReaders.length === 0) throw new Error("No readers found.");
 
         const connectResult = await stripe.connectReader(result.discoveredReaders[0]);
         if (connectResult.error) throw connectResult.error;
@@ -136,6 +140,12 @@
         return;
       }
 
+      if (!reader) {
+        document.getElementById('status').textContent = '❌ Connect the reader first';
+        log("Please connect the reader before processing payment.");
+        return;
+      }
+
       try {
         log(`Creating payment intent for $${amount}...`);
         const res = await fetch('https://shopify-pos-stripe.onrender.com/api/stripe/create_payment_intent', {
@@ -144,6 +154,7 @@
           body: JSON.stringify({ amount: Math.round(amount * 100) })
         });
         const data = await res.json();
+        if (!data.client_secret) throw new Error("No client_secret received.");
 
         log("Collecting payment method...");
         const result = await reader.collectPaymentMethod(data.client_secret);
